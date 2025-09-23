@@ -72,6 +72,10 @@
     .event-item .date{color:var(--accent-2)}
     .event-item .description{color:var(--muted)}
     input[type=search], #filter-category{padding: 10px; border-radius: 8px; border: 1px solid var(--glass-2); background: var(--glass); color: white;}
+    .vaccine-item {display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid var(--glass);}
+    .vaccine-item:last-child {border-bottom: none;}
+    .vaccine-item .name {font-weight: 600;}
+    .vaccine-item .date {color: var(--muted); font-size: 14px;}
   </style>
 </head>
 <body>
@@ -168,7 +172,7 @@
               </div>
               <div class="animal-list" id="animal-list"></div>
             </div>
-            <div class="animal-details" id="animal-details-view" style="display:none;">
+            <div class="animal-details" id="animal-details-view" style="display:none; overflow-y: auto; max-height: 85vh;">
               <div class="card">
                 <div id="details-icon" class="icon-large"></div>
                 <h3 id="details-name"></h3>
@@ -183,10 +187,23 @@
                   <div class="chart-container">
                     <canvas id="weight-chart"></canvas>
                   </div>
-                  <div style="display:flex; margin-top: 15px;">
+                  <div id="add-weight-form" style="display:flex; margin-top: 15px;">
                     <input type="number" id="weight-input" placeholder="Novo peso (kg)" style="flex-grow:1; margin-right:10px;">
                     <button id="btn-add-weight" class="btn btn-primary">Adicionar</button>
                   </div>
+              </div>
+              <div class="card">
+                  <h3>Histórico de Vacinação</h3>
+                  <div id="vaccine-list"></div>
+                  <form id="add-vaccine-form" style="margin-top: 15px; display: none;">
+                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom:10px;">
+                        <input type="text" id="vaccine-name" placeholder="Nome da Vacina" required>
+                        <input type="date" id="vaccine-date" required>
+                      </div>
+                      <input type="date" id="vaccine-next-date" style="width:100%; margin-bottom: 10px;">
+                      <label for="vaccine-next-date" style="font-size: 12px; color: var(--muted); display: block; text-align: left; margin-top: -8px; margin-bottom: 10px;">Próxima dose (opcional)</label>
+                      <button type="submit" class="btn btn-primary" style="width:100%">Adicionar Vacina</button>
+                  </form>
               </div>
             </div>
             <div id="no-animal-selected" class="card" style="display:flex;align-items:center;justify-content:center;flex-direction:column;min-height:400px;color:var(--muted)">
@@ -330,22 +347,9 @@
         ['dashboard', 'rebanho', 'calendario', 'perfil'].forEach(id => $(`#btn-menu-${id}`).classList.remove('active'));
         $(`#btn-menu-${viewId.split('-')[0]}`).classList.add('active');
 
-        // Lógica de visibilidade dos botões de ação principais
-        const btnAddAnimal = $('#btn-add');
-        const btnAddEvent = $('#btn-add-event');
-        const filterControls = document.querySelectorAll('#search, #filter-sex, #filter-category');
         const isAdmin = state.user && state.user.role === 'ADMIN';
-
-        btnAddAnimal.style.display = 'none';
-        btnAddEvent.style.display = 'none';
-        filterControls.forEach(c => c.style.display = 'none');
-        
-        if (viewId === 'rebanho-view') {
-            filterControls.forEach(c => c.style.display = 'inline-block');
-            if (isAdmin) btnAddAnimal.style.display = 'inline-block';
-        } else if (viewId === 'calendario-view') {
-            if (isAdmin) btnAddEvent.style.display = 'inline-block';
-        }
+        $('#btn-add').style.display = (viewId === 'rebanho-view' && isAdmin) ? 'inline-block' : 'none';
+        $('#btn-add-event').style.display = (viewId === 'calendario-view' && isAdmin) ? 'inline-block' : 'none';
     }
 
     function showModal(modalId, animal = null) {
@@ -371,21 +375,11 @@
         const listEl = $('#animal-list');
         listEl.innerHTML = '';
         const filteredAnimals = state.animals.filter(a => a.name.toLowerCase().includes(searchTerm.toLowerCase()));
-        
-        if (filteredAnimals.length === 0) {
-            listEl.innerHTML = '<p style="text-align:center;color:var(--muted)">Nenhum animal encontrado.</p>';
-            return;
-        }
-
+        if (filteredAnimals.length === 0) { listEl.innerHTML = '<p style="text-align:center;color:var(--muted)">Nenhum animal encontrado.</p>'; return; }
         filteredAnimals.forEach(animal => {
             const item = document.createElement('div');
             item.className = `animal-item ${state.selectedId === animal.id ? 'selected' : ''}`;
-            item.innerHTML = `
-                <div class="animal-item-icon">${animal.name.charAt(0).toUpperCase()}</div>
-                <div class="animal-item-details">
-                    <p class="name">${animal.name}</p>
-                    <p class="info">${animal.sex} - ${animal.category}</p>
-                </div>`;
+            item.innerHTML = `<div class="animal-item-icon">${animal.name.charAt(0).toUpperCase()}</div><div class="animal-item-details"><p class="name">${animal.name}</p><p class="info">${animal.sex} - ${animal.category}</p></div>`;
             item.addEventListener('click', () => selectAnimal(animal.id));
             listEl.appendChild(item);
         });
@@ -403,218 +397,67 @@
         $('#details-name').textContent = animal.name;
         $('#details-category').textContent = animal.category;
 
-        const btnEdit = $('#btn-edit'), btnDelete = $('#btn-delete');
-        if (state.user && state.user.role === 'ADMIN') {
-            btnEdit.style.display = 'inline-block';
-            btnDelete.style.display = 'inline-block';
-        } else {
-            btnEdit.style.display = 'none';
-            btnDelete.style.display = 'none';
-        }
+        const isAdmin = state.user && state.user.role === 'ADMIN';
+        $('#btn-edit').style.display = isAdmin ? 'inline-block' : 'none';
+        $('#btn-delete').style.display = isAdmin ? 'inline-block' : 'none';
+        $('#add-weight-form').style.display = isAdmin ? 'flex' : 'none';
+        $('#add-vaccine-form').style.display = isAdmin ? 'block' : 'none';
 
-        const weights = await getWeightsAPI(id);
+        const [weights, vaccines] = await Promise.all([getWeightsAPI(id), getVaccinesAPI(id)]);
         renderWeightChart(weights);
+        renderVaccines(vaccines);
     }
     
     function renderWeightChart(weights = []) {
         const ctx = $('#weight-chart').getContext('2d');
         if (state.charts.weight) state.charts.weight.destroy();
-        
-        state.charts.weight = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: weights.map(w => new Date(w.weighing_date).toLocaleDateString()),
-                datasets: [{
-                    label: 'Peso (kg)',
-                    data: weights.map(w => w.weight),
-                    borderColor: 'rgba(87, 217, 163, 1)',
-                    backgroundColor: 'rgba(87, 217, 163, 0.2)',
-                    tension: 0.1,
-                    fill: true
-                }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: false } } }
-        });
+        state.charts.weight = new Chart(ctx, { type: 'line', data: { labels: weights.map(w => new Date(w.weighing_date).toLocaleDateString()), datasets: [{ label: 'Peso (kg)', data: weights.map(w => w.weight), borderColor: 'rgba(87, 217, 163, 1)', backgroundColor: 'rgba(87, 217, 163, 0.2)', tension: 0.1, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: false } } } });
     }
 
     function renderDashboardCharts(dashboardData) {
         const categoryCtx = $('#category-chart').getContext('2d');
         if(state.charts.category) state.charts.category.destroy();
-
         const categories = dashboardData.byCategory.map(c => c.category);
         const counts = dashboardData.byCategory.map(c => c.count);
-
-        state.charts.category = new Chart(categoryCtx, {
-            type: 'doughnut',
-            data: {
-                labels: categories,
-                datasets: [{
-                    label: 'Animais',
-                    data: counts,
-                    backgroundColor: ['#60a5fa', '#f87171', '#fbbf24', '#a78bfa', '#4ade80'],
-                    borderWidth: 0
-                }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-        });
+        state.charts.category = new Chart(categoryCtx, { type: 'doughnut', data: { labels: categories, datasets: [{ label: 'Animais', data: counts, backgroundColor: ['#60a5fa', '#f87171', '#fbbf24', '#a78bfa', '#4ade80'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } } });
     }
 
     function renderEvents() {
         const listEl = $('#event-list');
         listEl.innerHTML = '';
-        if (state.events.length === 0) {
-            listEl.innerHTML = '<p style="text-align:center;color:var(--muted)">Nenhum evento agendado.</p>';
-            return;
-        }
-        state.events.forEach(event => {
-            const item = document.createElement('div');
-            item.className = 'event-item';
-            item.innerHTML = `
-                <div class="event-item-header">
-                    <span>${event.title}</span>
-                    <span class="date">${new Date(event.event_date).toLocaleDateString()}</span>
-                </div>
-                <p class="description">${event.description || 'Sem descrição.'}</p>`;
-            listEl.appendChild(item);
-        });
-
+        if (state.events.length === 0) { listEl.innerHTML = '<p style="text-align:center;color:var(--muted)">Nenhum evento agendado.</p>'; return; }
+        state.events.forEach(event => { const item = document.createElement('div'); item.className = 'event-item'; item.innerHTML = `<div class="event-item-header"><span>${event.title}</span><span class="date">${new Date(event.event_date).toLocaleDateString()}</span></div><p class="description">${event.description || 'Sem descrição.'}</p>`; listEl.appendChild(item); });
         const animalSelect = $('#e-animal-id');
         animalSelect.innerHTML = '<option value="">Geral</option>';
-        state.animals.forEach(a => {
-            const option = document.createElement('option');
-            option.value = a.id;
-            option.textContent = a.name;
-            animalSelect.appendChild(option);
+        state.animals.forEach(a => { const option = document.createElement('option'); option.value = a.id; option.textContent = a.name; animalSelect.appendChild(option); });
+    }
+
+    function renderVaccines(vaccines = []) {
+        const listEl = $('#vaccine-list');
+        listEl.innerHTML = '';
+        if (vaccines.length === 0) { listEl.innerHTML = '<p style="text-align:center;color:var(--muted);font-size:14px;">Nenhuma vacina registrada.</p>'; return; }
+        vaccines.forEach(vaccine => {
+            const item = document.createElement('div');
+            item.className = 'vaccine-item';
+            item.innerHTML = `<div><p class="name">${vaccine.name}</p><p class="date">Próxima dose: ${vaccine.next_dose_date ? new Date(vaccine.next_dose_date).toLocaleDateString() : 'N/A'}</p></div><p class="date">Aplicada em: ${new Date(vaccine.application_date).toLocaleDateString()}</p>`;
+            listEl.appendChild(item);
         });
     }
 
     // --- FUNÇÕES DA API ---
-    async function apiRequest(endpoint, method = 'GET', body = null) {
-        try {
-            const options = {
-                method,
-                headers: { 'Content-Type': 'application/json' }
-            };
-            if (state.token) {
-                options.headers['Authorization'] = `Bearer ${state.token}`;
-            }
-            if (body) {
-                options.body = JSON.stringify(body);
-            }
-            const response = await fetch(`${API_URL}${endpoint}`, options);
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-            }
-            return response.status === 204 ? null : response.json();
-        } catch (error) {
-            showToast(error.message, 'error');
-            if (error.message.includes('Token')) logout();
-            return null;
-        }
-    }
-
-    async function loginAPI(email, password) {
-        const data = await apiRequest('/sessions', 'POST', { email, password });
-        if (data) {
-            state.token = data.token;
-            state.user = data.user;
-            localStorage.setItem(TOKEN_KEY, data.token);
-            localStorage.setItem(USER_KEY, JSON.stringify(data.user));
-            return true;
-        }
-        return false;
-    }
-
-    async function loadFromAPI(filters = {}) {
-        const params = new URLSearchParams(filters).toString();
-        const endpoint = params ? `/animals?${params}` : '/animals';
-        state.animals = await apiRequest(endpoint) || [];
-        if (Object.keys(filters).length === 0) {
-            state.events = await apiRequest('/events') || [];
-            renderEvents();
-        }
-        renderList();
-    }
-    
-    async function createOrUpdateAnimalAPI(animalData) {
-        const endpoint = animalData.id ? `/animals/${animalData.id}` : '/animals';
-        const method = animalData.id ? 'PUT' : 'POST';
-        const newData = await apiRequest(endpoint, method, animalData);
-        if (newData !== null) {
-            showToast(`Animal ${animalData.id ? 'atualizado' : 'cadastrado'} com sucesso!`, 'success');
-            await loadFromAPI();
-            if(!animalData.id) selectAnimal(newData.id);
-            return true;
-        }
-        return false;
-    }
-
-    async function deleteAnimalAPI(id) {
-        if (!confirm('Tem certeza que deseja excluir este animal?')) return false;
-        const result = await apiRequest(`/animals/${id}`, 'DELETE');
-        if(result === null) {
-            showToast('Animal excluído com sucesso!', 'success');
-            state.selectedId = null;
-            $('#animal-details-view').style.display = 'none';
-            $('#no-animal-selected').style.display = 'flex';
-            await loadFromAPI();
-        }
-        return true;
-    }
-
-    async function getWeightsAPI(animalId) {
-        return await apiRequest(`/animals/${animalId}/weights`) || [];
-    }
-    
-    async function addWeightAPI(animalId, weightData) {
-        const newWeight = await apiRequest(`/animals/${animalId}/weights`, 'POST', { weight: weightData.weight, weighing_date: weightData.date });
-        if(newWeight) {
-            showToast('Peso adicionado com sucesso!', 'success');
-            const weights = await getWeightsAPI(animalId);
-            renderWeightChart(weights);
-            return true;
-        }
-        return false;
-    }
-
-    async function loadDashboardData() {
-        const data = await apiRequest('/dashboard');
-        if (data) {
-            $('#total-animals').textContent = data.total;
-            $('#male-count').textContent = data.males;
-            $('#female-count').textContent = data.females;
-            renderDashboardCharts(data);
-        }
-    }
-
-    async function createEventAPI(eventData) {
-        const newEvent = await apiRequest('/events', 'POST', eventData);
-        if(newEvent) {
-            showToast('Evento criado com sucesso!', 'success');
-            await loadFromAPI();
-            return true;
-        }
-        return false;
-    }
-    
-    async function updateUserPasswordAPI(userId, oldPassword, newPassword) {
-        const data = { oldPassword: oldPassword, password: newPassword };
-        const result = await apiRequest(`/users/${userId}`, 'PUT', data);
-        if (result === null) {
-            showToast('Senha alterada com sucesso!', 'success');
-            return true;
-        }
-        return false;
-    }
-
-    function logout() {
-        state.token = null;
-        state.user = null;
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
-        showView('login-view');
-    }
+    async function apiRequest(endpoint, method = 'GET', body = null) { try { const options = { method, headers: { 'Content-Type': 'application/json' } }; if (state.token) { options.headers['Authorization'] = `Bearer ${state.token}`; } if (body) { options.body = JSON.stringify(body); } const response = await fetch(`${API_URL}${endpoint}`, options); if (!response.ok) { const errorData = await response.json(); throw new Error(errorData.error || `HTTP error! status: ${response.status}`); } return response.status === 204 ? null : response.json(); } catch (error) { showToast(error.message, 'error'); if (error.message.includes('Token')) logout(); return null; } }
+    async function loginAPI(email, password) { const data = await apiRequest('/sessions', 'POST', { email, password }); if (data) { state.token = data.token; state.user = data.user; localStorage.setItem(TOKEN_KEY, data.token); localStorage.setItem(USER_KEY, JSON.stringify(data.user)); return true; } return false; }
+    async function loadFromAPI(filters = {}) { const params = new URLSearchParams(filters).toString(); const endpoint = params ? `/animals?${params}` : '/animals'; state.animals = await apiRequest(endpoint) || []; if (Object.keys(filters).length === 0) { state.events = await apiRequest('/events') || []; renderEvents(); } renderList(); }
+    async function createOrUpdateAnimalAPI(animalData) { const endpoint = animalData.id ? `/animals/${animalData.id}` : '/animals'; const method = animalData.id ? 'PUT' : 'POST'; const newData = await apiRequest(endpoint, method, animalData); if (newData !== null) { showToast(`Animal ${animalData.id ? 'atualizado' : 'cadastrado'} com sucesso!`, 'success'); await loadFromAPI(); if(!animalData.id) selectAnimal(newData.id); return true; } return false; }
+    async function deleteAnimalAPI(id) { if (!confirm('Tem certeza que deseja excluir este animal?')) return false; const result = await apiRequest(`/animals/${id}`, 'DELETE'); if(result === null) { showToast('Animal excluído com sucesso!', 'success'); state.selectedId = null; $('#animal-details-view').style.display = 'none'; $('#no-animal-selected').style.display = 'flex'; await loadFromAPI(); } return true; }
+    async function getWeightsAPI(animalId) { return await apiRequest(`/animals/${animalId}/weights`) || []; }
+    async function addWeightAPI(animalId, weightData) { const newWeight = await apiRequest(`/animals/${animalId}/weights`, 'POST', { weight: weightData.weight, weighing_date: weightData.date }); if(newWeight) { showToast('Peso adicionado com sucesso!', 'success'); const weights = await getWeightsAPI(animalId); renderWeightChart(weights); return true; } return false; }
+    async function loadDashboardData() { const data = await apiRequest('/dashboard'); if (data) { $('#total-animals').textContent = data.total; $('#male-count').textContent = data.males; $('#female-count').textContent = data.females; renderDashboardCharts(data); } }
+    async function createEventAPI(eventData) { const newEvent = await apiRequest('/events', 'POST', eventData); if(newEvent) { showToast('Evento criado com sucesso!', 'success'); await loadFromAPI(); return true; } return false; }
+    async function updateUserPasswordAPI(userId, oldPassword, newPassword) { const data = { oldPassword: oldPassword, password: newPassword }; const result = await apiRequest(`/users/${userId}`, 'PUT', data); if (result === null) { showToast('Senha alterada com sucesso!', 'success'); return true; } return false; }
+    async function getVaccinesAPI(animalId) { return await apiRequest(`/animals/${animalId}/vaccines`) || []; }
+    async function addVaccineAPI(animalId, vaccineData) { const newVaccine = await apiRequest(`/animals/${animalId}/vaccines`, 'POST', vaccineData); if (newVaccine) { showToast('Vacina registrada com sucesso!', 'success'); const vaccines = await getVaccinesAPI(animalId); renderVaccines(vaccines); return true; } return false; }
+    function logout() { state.token = null; state.user = null; localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); showView('login-view'); }
 
     // --- EVENT LISTENERS ---
     $('#login-form').addEventListener('submit', async (e) => { e.preventDefault(); const email = $('#email').value; const password = $('#password').value; const success = await loginAPI(email, password); if (success) initApp(); });
@@ -631,20 +474,12 @@
     $('#event-modal-form').addEventListener('submit', async (e) => { e.preventDefault(); const eventData = { title: $('#e-title').value.trim(), description: $('#e-description').value.trim(), event_date: $('#e-date').value, type: $('#e-type').value, animal_id: $('#e-animal-id').value || null }; const success = await createEventAPI(eventData); if(success) $('#event-modal').style.display = 'none'; });
     $('#search').addEventListener('input', (e) => renderList(e.target.value));
     $('#btn-add-weight').addEventListener('click', async () => { if (!state.selectedId) return showToast('Selecione um animal.', 'info'); const weightInput = $('#weight-input'); const weight = parseFloat(weightInput.value); if (!weight || weight <= 0) return showToast('Insira um peso válido.', 'error'); const weightData = { weight: weight, date: new Date().toISOString().split('T')[0] }; const success = await addWeightAPI(state.selectedId, weightData); if(success) weightInput.value = ''; });
-    
     function applyFilters() { const filters = { sex: $('#filter-sex').value, category: $('#filter-category').value.trim() }; if (!filters.sex) delete filters.sex; if (!filters.category) delete filters.category; loadFromAPI(filters); }
     $('#filter-sex').addEventListener('change', applyFilters);
     $('#filter-category').addEventListener('input', applyFilters);
-
     $('#btn-menu-perfil').addEventListener('click', () => showMainView('perfil-view'));
-    $('#change-password-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const oldPassword = $('#old-password').value;
-        const newPassword = $('#new-password').value;
-        if (!newPassword || newPassword.length < 6) { return showToast('A nova senha deve ter pelo menos 6 caracteres.', 'error'); }
-        const success = await updateUserPasswordAPI(state.user.id, oldPassword, newPassword);
-        if (success) { $('#change-password-form').reset(); }
-    });
+    $('#change-password-form').addEventListener('submit', async (e) => { e.preventDefault(); const oldPassword = $('#old-password').value; const newPassword = $('#new-password').value; if (!newPassword || newPassword.length < 6) { return showToast('A nova senha deve ter pelo menos 6 caracteres.', 'error'); } const success = await updateUserPasswordAPI(state.user.id, oldPassword, newPassword); if (success) { $('#change-password-form').reset(); } });
+    $('#add-vaccine-form').addEventListener('submit', async (e) => { e.preventDefault(); if (!state.selectedId) return; const vaccineData = { name: $('#vaccine-name').value.trim(), application_date: $('#vaccine-date').value, next_dose_date: $('#vaccine-next-date').value || null }; if (!vaccineData.name || !vaccineData.application_date) { return showToast('Nome da vacina e data de aplicação são obrigatórios.', 'error'); } const success = await addVaccineAPI(state.selectedId, vaccineData); if (success) { $('#add-vaccine-form').reset(); } });
 
     // --- INICIALIZAÇÃO DA APLICAÇÃO ---
     async function initApp() {
@@ -660,9 +495,7 @@
             showView('login-view');
         }
     }
-
     initApp();
-
 </script>
 </body>
 </html>

@@ -151,8 +151,16 @@
             <div>
               <div class="header">
                 <h2>Meu Rebanho</h2>
-                <div>
+                <div style="display: flex; align-items: center; gap: 10px;">
                   <input type="search" id="search" placeholder="Buscar por nome...">
+                  
+                  <select id="filter-sex" class="form-group select">
+                    <option value="">Todos os Sexos</option>
+                    <option value="Macho">Macho</option>
+                    <option value="Fêmea">Fêmea</option>
+                  </select>
+                  <input type="text" id="filter-category" placeholder="Filtrar por categoria..." style="padding: 10px; border-radius: 8px; border: 1px solid var(--glass-2); background: var(--glass); color: white;">
+                  
                   <button id="btn-add" class="btn btn-primary">Cadastrar Animal</button>
                 </div>
               </div>
@@ -504,13 +512,22 @@
         return false;
     }
 
-    async function loadFromAPI() {
-        state.animals = await apiRequest('/animals') || [];
-        state.events = await apiRequest('/events') || [];
+    async function loadFromAPI(filters = {}) {
+        // Constrói a string de query params a partir do objeto de filtros
+        const params = new URLSearchParams(filters).toString();
+        const endpoint = params ? `/animals?${params}` : '/animals';
+
+        state.animals = await apiRequest(endpoint) || [];
+        
+        // Apenas recarrega os eventos na primeira carga
+        if (Object.keys(filters).length === 0) {
+            state.events = await apiRequest('/events') || [];
+            renderEvents();
+        }
+        
         renderList();
-        renderEvents();
     }
-    
+        
     async function createOrUpdateAnimalAPI(animalData) {
         const endpoint = animalData.id ? `/animals/${animalData.id}` : '/animals';
         const method = animalData.id ? 'PUT' : 'POST';
@@ -617,6 +634,26 @@
     $('#event-modal-form').addEventListener('submit', async (e) => { e.preventDefault(); const eventData = { title: $('#e-title').value.trim(), description: $('#e-description').value.trim(), event_date: $('#e-date').value, type: $('#e-type').value, animal_id: $('#e-animal-id').value || null }; const success = await createEventAPI(eventData); if(success) $('#event-modal').style.display = 'none'; });
     $('#search').addEventListener('input', (e) => renderList(e.target.value));
     $('#btn-add-weight').addEventListener('click', async () => { if (!state.selectedId) return showToast('Selecione um animal.', 'info'); const weightInput = $('#weight-input'); const weight = parseFloat(weightInput.value); if (!weight || weight <= 0) return showToast('Insira um peso válido.', 'error'); const weightData = { weight: weight, date: new Date().toISOString().split('T')[0] }; const success = await addWeightAPI(state.selectedId, weightData); if(success) weightInput.value = ''; });
+
+    // --- EVENT LISTENERS (Continuação) ---
+
+    // Função para aplicar os filtros e recarregar a lista
+    function applyFilters() {
+        const filters = {
+            sex: $('#filter-sex').value,
+            category: $('#filter-category').value.trim()
+        };
+        // Remove filtros vazios para não poluir o URL
+        if (!filters.sex) delete filters.sex;
+        if (!filters.category) delete filters.category;
+        
+        loadFromAPI(filters);
+    }
+
+    // Adiciona os listeners para os novos filtros
+    $('#filter-sex').addEventListener('change', applyFilters);
+    $('#filter-category').addEventListener('input', applyFilters);
+
 
     // --- INICIALIZAÇÃO DA APLICAÇÃO ---
     async function initApp() {

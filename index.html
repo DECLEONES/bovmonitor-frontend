@@ -72,10 +72,10 @@
     .event-item .date{color:var(--accent-2)}
     .event-item .description{color:var(--muted)}
     input[type=search], #filter-category{padding: 10px; border-radius: 8px; border: 1px solid var(--glass-2); background: var(--glass); color: white;}
-    .vaccine-item {display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid var(--glass);}
+    .vaccine-item {display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--glass);}
     .vaccine-item:last-child {border-bottom: none;}
     .vaccine-item .name {font-weight: 600;}
-    .vaccine-item .date {color: var(--muted); font-size: 14px;}
+    .vaccine-item .date {color: var(--muted); font-size: 14px; text-align: right;}
   </style>
 </head>
 <body>
@@ -120,7 +120,7 @@
             <span>Calendário</span>
         </div>
         <div id="btn-menu-perfil" class="menu-item">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:22px;height:22px;margin-right:15px"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" /></svg>
           <span>Meu Perfil</span>
         </div>
       </nav>
@@ -374,6 +374,7 @@
     function renderList(searchTerm = '') {
         const listEl = $('#animal-list');
         listEl.innerHTML = '';
+        // A filtragem por nome agora é feita no frontend, sobre os dados já filtrados pela API
         const filteredAnimals = state.animals.filter(a => a.name.toLowerCase().includes(searchTerm.toLowerCase()));
         if (filteredAnimals.length === 0) { listEl.innerHTML = '<p style="text-align:center;color:var(--muted)">Nenhum animal encontrado.</p>'; return; }
         filteredAnimals.forEach(animal => {
@@ -439,7 +440,7 @@
         vaccines.forEach(vaccine => {
             const item = document.createElement('div');
             item.className = 'vaccine-item';
-            item.innerHTML = `<div><p class="name">${vaccine.name}</p><p class="date">Próxima dose: ${vaccine.next_dose_date ? new Date(vaccine.next_dose_date).toLocaleDateString() : 'N/A'}</p></div><p class="date">Aplicada em: ${new Date(vaccine.application_date).toLocaleDateString()}</p>`;
+            item.innerHTML = `<div><p class="name">${vaccine.name}</p><p class="date">Próxima dose: ${vaccine.next_dose_date ? new Date(vaccine.next_dose_date).toLocaleDateString() : 'N/A'}</p></div><div class="date">Aplicada em:<br>${new Date(vaccine.application_date).toLocaleDateString()}</div>`;
             listEl.appendChild(item);
         });
     }
@@ -465,6 +466,7 @@
     $('#btn-menu-dashboard').addEventListener('click', () => showMainView('dashboard-view'));
     $('#btn-menu-rebanho').addEventListener('click', () => showMainView('rebanho-view'));
     $('#btn-menu-calendario').addEventListener('click', () => showMainView('calendario-view'));
+    $('#btn-menu-perfil').addEventListener('click', () => showMainView('perfil-view'));
     $('#btn-add').addEventListener('click', () => showModal('#modal'));
     $('#btn-edit').addEventListener('click', () => { if (!state.selectedId) return; const animal = state.animals.find(a => a.id === state.selectedId); showModal('#modal', animal); });
     $('#btn-delete').addEventListener('click', () => { if (state.selectedId) deleteAnimalAPI(state.selectedId); });
@@ -477,7 +479,6 @@
     function applyFilters() { const filters = { sex: $('#filter-sex').value, category: $('#filter-category').value.trim() }; if (!filters.sex) delete filters.sex; if (!filters.category) delete filters.category; loadFromAPI(filters); }
     $('#filter-sex').addEventListener('change', applyFilters);
     $('#filter-category').addEventListener('input', applyFilters);
-    $('#btn-menu-perfil').addEventListener('click', () => showMainView('perfil-view'));
     $('#change-password-form').addEventListener('submit', async (e) => { e.preventDefault(); const oldPassword = $('#old-password').value; const newPassword = $('#new-password').value; if (!newPassword || newPassword.length < 6) { return showToast('A nova senha deve ter pelo menos 6 caracteres.', 'error'); } const success = await updateUserPasswordAPI(state.user.id, oldPassword, newPassword); if (success) { $('#change-password-form').reset(); } });
     $('#add-vaccine-form').addEventListener('submit', async (e) => { e.preventDefault(); if (!state.selectedId) return; const vaccineData = { name: $('#vaccine-name').value.trim(), application_date: $('#vaccine-date').value, next_dose_date: $('#vaccine-next-date').value || null }; if (!vaccineData.name || !vaccineData.application_date) { return showToast('Nome da vacina e data de aplicação são obrigatórios.', 'error'); } const success = await addVaccineAPI(state.selectedId, vaccineData); if (success) { $('#add-vaccine-form').reset(); } });
 

@@ -129,6 +129,11 @@
                 <div><h3 id="detail-name">Selecione um animal</h3><p class="small" id="detail-meta">Ficha individual</p></div>
                 <div><button class="btn" id="btn-edit" style="display:none">Editar</button><button class="btn" id="btn-delete" style="display:none; background: #b91c1c;">Excluir</button></div>
               </div>
+              
+              <div class="stat-card" style="background:var(--glass-2); padding: 12px; text-align:center; margin-top:8px;">
+                <h2 id="detail-gmd" style="font-size: 24px;">--</h2>
+                <p style="margin:0; font-size:12px;">Ganho Médio Diário (GMD)</p>
+              </div>
               <div class="chart-wrap"><canvas id="weightChart"></canvas></div>
               <div style="display:flex;gap:8px"><input id="weight-input" placeholder="Registrar peso (kg)" /><button class="btn" id="btn-add-weight">Salvar</button></div>
               <div style="margin-top:8px"><h4>Histórico de Peso</h4><div class="timeline" id="timeline"></div></div>
@@ -153,7 +158,6 @@
         <div class="form-grid">
           <div class="form-group"><label>Nome / Identificação</label><input id="f-name" /><p class="form-error" id="f-name-error"></p></div>
           <div class="form-group"><label>Tag / Brinco</label><input id="f-tag" /></div>
-          
           <div class="form-group"><label>Raça</label><input id="f-breed" /></div>
           <div class="form-group"><label>Origem</label><input id="f-origin" /></div>
           <div class="form-group"><label>Sexo</label><select id="f-sex"><option>Macho</option><option>Fêmea</option></select></div>
@@ -166,6 +170,7 @@
         </div>
       </div>
     </div>
+    
     <div class="modal-backdrop" id="event-modal">
       <div class="modal">
         <h3 id="event-modal-title">Novo Evento</h3><div style="height:10px"></div>
@@ -214,15 +219,33 @@
     function logout() { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); state = { animals: [], events: [], selectedId: null, editingId: null, user: null, token: null }; showView('login-view'); }
     async function apiFetch(url, options = {}) { const token = state.token; if (!token) throw new Error("Não autenticado"); const defaultOptions = { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }; const response = await fetch(`${API_BASE_URL}/api${url}`, { ...defaultOptions, ...options }); if (response.status === 401) { logout(); throw new Error("Sessão expirada."); } if (!response.ok && response.status !== 204) throw new Error(`Falha na API: ${response.statusText}`); return response.status === 204 ? null : response.json(); }
     async function loadFromAPI() { try { state.animals = await apiFetch('/animals'); renderAll(); } catch (error) { console.error(error); showToast(error.message, 'error'); } }
-    
-    // createAnimalAPI MODIFICADA
     async function createAnimalAPI(animalData) { showLoader(); try { await apiFetch('/animals', { method: 'POST', body: JSON.stringify(animalData) }); await loadFromAPI(); showToast('Animal cadastrado!', 'success'); return true; } catch (error) { showToast('Falha ao cadastrar.', 'error'); return false; } finally { hideLoader(); } }
-    
-    // updateAnimalAPI MODIFICADA
     async function updateAnimalAPI(id, animalData) { showLoader(); try { await apiFetch(`/animals/${id}`, { method: 'PUT', body: JSON.stringify(animalData) }); await loadFromAPI(); showToast('Animal atualizado!', 'success'); return true; } catch (error) { showToast('Falha ao atualizar.', 'error'); return false; } finally { hideLoader(); } }
-    
     async function deleteAnimalAPI(id) { showLoader(); try { await apiFetch(`/animals/${id}`, { method: 'DELETE' }); state.selectedId = null; await loadFromAPI(); showToast('Animal excluído.', 'info'); return true; } catch (error) { showToast('Falha ao excluir.', 'error'); return false; } finally { hideLoader(); } }
-    async function fetchWeightsForAnimal(animalId) { try { const weights = await apiFetch(`/animals/${animalId}/weights`); renderTimeline(weights); renderChart(weights); } catch (error) { console.error(error); $('#timeline').innerHTML = '<p>Não foi possível carregar o histórico.</p>'; } }
+    
+    // fetchWeightsForAnimal MODIFICADO para calcular GMD
+    async function fetchWeightsForAnimal(animalId) { 
+        try { 
+            const weights = await apiFetch(`/animals/${animalId}/weights`); 
+            renderTimeline(weights); 
+            renderChart(weights); 
+            // Lógica do GMD
+            const gmd = calculateGMD(weights);
+            const gmdEl = $('#detail-gmd');
+            if (gmd !== null) {
+                gmdEl.innerText = `${gmd.toFixed(3)} kg/dia`;
+                gmdEl.style.color = gmd >= 0 ? 'var(--accent)' : '#f87171';
+            } else {
+                gmdEl.innerText = 'N/D';
+                gmdEl.style.color = 'inherit';
+            }
+        } catch (error) { 
+            console.error(error); 
+            $('#timeline').innerHTML = '<p>Não foi possível carregar o histórico.</p>'; 
+            $('#detail-gmd').innerText = 'Erro';
+        } 
+    }
+    
     async function addWeightAPI(animalId, weightData) { showLoader(); try { await apiFetch(`/animals/${animalId}/weights`, { method: 'POST', body: JSON.stringify(weightData) }); await fetchWeightsForAnimal(animalId); showToast('Peso registrado!', 'success'); return true; } catch (error) { showToast('Falha ao registrar peso.', 'error'); return false; } finally { hideLoader(); } }
     async function loadDashboardData() { showLoader(); try { const data = await apiFetch('/dashboard'); $('#stat-total').innerText = data.total; $('#stat-males').innerText = data.males; $('#stat-females').innerText = data.females; renderCategoryChart(data.byCategory); } catch(error) { showToast('Falha ao carregar dados do dashboard.', 'error'); } finally { hideLoader(); } }
     async function loadEventsAPI() { showLoader(); try { state.events = await apiFetch('/events'); renderEventList(); } catch (error) { showToast('Falha ao carregar eventos.', 'error'); } finally { hideLoader(); } }
@@ -230,15 +253,70 @@
     
     // --- FUNÇÕES DE RENDERIZAÇÃO E EVENTOS ---
     function renderList(filter = '') { const area = $('#list-area'); area.innerHTML = ''; const list = state.animals.filter(a => (a.name + ' ' + (a.tag || '') + ' ' + a.id).toLowerCase().includes(filter.toLowerCase())); list.forEach(a => { const el = document.createElement('div'); el.className = 'animal'; el.dataset.id = a.id; el.innerHTML = `<div class="avatar">${a.name.slice(0, 2).toUpperCase()}</div><div class="meta"><h4>${a.name} <span style="color:var(--muted);font-size:12px">• ${a.category}</span></h4><p class="small">${a.tag || ''} — Nasc: ${fmtDate(a.birth_date)}</p></div><div style="text-align:right"><div class="pill">-- kg</div><div class="small">-- eventos</div></div>`; el.addEventListener('click', () => selectAnimal(a.id)); area.appendChild(el); }); }
-    function selectAnimal(id) { const a = state.animals.find(x => x.id === id); if (!a) return; state.selectedId = id; $('#detail-name').innerText = a.name + ' — ' + a.tag; $('#detail-meta').innerText = `Nasc: ${fmtDate(a.birth_date)} • ${a.sex} • ${a.category}`; const btnEdit = $('#btn-edit'), btnDelete = $('#btn-delete'); btnEdit.style.display = 'inline-block'; btnDelete.style.display = 'inline-block'; const newBtnEdit = btnEdit.cloneNode(true); btnEdit.parentNode.replaceChild(newBtnEdit, btnEdit); setupEditButton(newBtnEdit, a); const newBtnDelete = btnDelete.cloneNode(true); btnDelete.parentNode.replaceChild(newBtnDelete, btnDelete); newBtnDelete.addEventListener('click', () => { if (confirm(`Tem certeza que deseja excluir "${a.name}"?`)) deleteAnimalAPI(a.id); }); $('#timeline').innerHTML = '<p class="small">Carregando histórico...</p>'; renderChart([]); fetchWeightsForAnimal(a.id); }
+    
+    // selectAnimal MODIFICADO para resetar GMD
+    function selectAnimal(id) { 
+        const a = state.animals.find(x => x.id === id); 
+        if (!a) return; 
+        state.selectedId = id; 
+        $('#detail-name').innerText = a.name + ' — ' + a.tag; 
+        $('#detail-meta').innerText = `Nasc: ${fmtDate(a.birth_date)} • ${a.sex} • ${a.category}`; 
+        const btnEdit = $('#btn-edit'), btnDelete = $('#btn-delete'); 
+        btnEdit.style.display = 'inline-block'; 
+        btnDelete.style.display = 'inline-block'; 
+        const newBtnEdit = btnEdit.cloneNode(true); 
+        btnEdit.parentNode.replaceChild(newBtnEdit, btnEdit); 
+        setupEditButton(newBtnEdit, a); 
+        const newBtnDelete = btnDelete.cloneNode(true); 
+        btnDelete.parentNode.replaceChild(newBtnDelete, btnDelete); 
+        newBtnDelete.addEventListener('click', () => { if (confirm(`Tem certeza que deseja excluir "${a.name}"?`)) deleteAnimalAPI(a.id); }); 
+        
+        // Reset do GMD e do histórico
+        $('#detail-gmd').innerText = '--';
+        $('#detail-gmd').style.color = 'inherit';
+        $('#timeline').innerHTML = '<p class="small">Carregando histórico...</p>'; 
+        renderChart([]); 
+        fetchWeightsForAnimal(a.id); 
+    }
+    
     let weightChartInstance = null; function renderChart(weights = []) { const canvas = document.getElementById('weightChart'); const ctx = canvas.getContext('2d'); if(weightChartInstance) weightChartInstance.destroy(); if (weights.length === 0) { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#9fb4c9'; ctx.font = '14px Inter'; ctx.fillText('Sem dados para exibir o gráfico.', 12, 24); return; } const labels = weights.map(w => fmtDate(w.date)).reverse(); const dataPoints = weights.map(w => w.weight).reverse(); weightChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: 'Peso (kg)', data: dataPoints, borderColor: 'var(--accent)', backgroundColor: 'rgba(87, 217, 163, 0.2)', borderWidth: 2, fill: true, tension: 0.2 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: false }, }, plugins: { legend: { display: false } } } }); }
     let categoryChartInstance = null; function renderCategoryChart(categoryData = []) { const canvas = document.getElementById('categoryChart'); const ctx = canvas.getContext('2d'); if(categoryChartInstance) categoryChartInstance.destroy(); const labels = categoryData.map(c => c.category); const dataPoints = categoryData.map(c => c.count); categoryChartInstance = new Chart(ctx, { type: 'doughnut', data: { labels: labels, datasets: [{ label: 'Animais', data: dataPoints, backgroundColor: ['#60A5FA', '#34D399', '#FBBF24', '#F87171'], hoverOffset: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } }); }
-    function renderAll() { renderList($('#search').value || ''); if (state.selectedId) { const stillExists = state.animals.find(a => a.id === state.selectedId); if (stillExists) selectAnimal(stillExists.id); else { $('#detail-name').innerText = 'Selecione um animal'; $('#detail-meta').innerText = 'Ficha individual'; $('#btn-edit').style.display = 'none'; $('#btn-delete').style.display = 'none'; } } }
+    
+    // renderAll MODIFICADO para resetar GMD
+    function renderAll() { 
+        renderList($('#search').value || ''); 
+        if (state.selectedId) { 
+            const stillExists = state.animals.find(a => a.id === state.selectedId); 
+            if (stillExists) {
+                selectAnimal(stillExists.id); 
+            } else { 
+                $('#detail-name').innerText = 'Selecione um animal'; 
+                $('#detail-meta').innerText = 'Ficha individual'; 
+                $('#btn-edit').style.display = 'none'; 
+                $('#btn-delete').style.display = 'none';
+                $('#detail-gmd').innerText = '--';
+                $('#detail-gmd').style.color = 'inherit';
+                renderChart([]);
+                renderTimeline([]);
+            } 
+        } 
+    }
+    
     function renderTimeline(weights = []) { const area = $('#timeline'); area.innerHTML = ''; if (weights.length === 0) { area.innerHTML = '<p class="small">Nenhum registro de peso.</p>'; return; } weights.forEach(w => { const el = document.createElement('div'); el.className = 'event'; el.innerHTML = `<strong>${w.weight} kg</strong> - <span class="small">${fmtDate(w.date)}</span>`; area.appendChild(el); }); }
     function renderEventList() { const area = $('#event-list-area'); area.innerHTML = ''; if(state.events.length === 0) { area.innerHTML = '<p class="small">Nenhum evento agendado.</p>'; return; } state.events.forEach(e => { const el = document.createElement('div'); el.className = 'event-card'; el.innerHTML = `<div class="event-date"><span class="event-day">${fmtDate(e.event_date, 'day')}</span><span class="event-month">${fmtDate(e.event_date, 'month')}</span></div><div><h4>${e.title}</h4><p class="small">${e.description || ''}</p><p class="small"><b>Animal:</b> ${e.animal_name || 'Todo o rebanho'} • <b>Tipo:</b> ${e.type}</p></div>`; area.appendChild(el); }); }
-    
-    // setupEditButton MODIFICADO
     function setupEditButton(button, animal) { button.addEventListener('click', () => { state.editingId = animal.id; $('#animal-modal-title').innerText = 'Editar Animal'; $('#f-name').value = animal.name; $('#f-tag').value = animal.tag || ''; $('#f-breed').value = animal.breed || ''; $('#f-origin').value = animal.origin || ''; $('#f-sex').value = animal.sex; $('#f-birth').value = animal.birth_date ? new Date(animal.birth_date).toISOString().split('T')[0] : ''; $('#f-cat').value = animal.category; $('#animal-modal').style.display = 'flex'; }); }
+    
+    // NOVA FUNÇÃO para calcular o GMD
+    function calculateGMD(weights) {
+        if (!weights || weights.length < 2) return null;
+        const latestWeight = weights[0];
+        const previousWeight = weights[1];
+        const weightDiff = latestWeight.weight - previousWeight.weight;
+        const timeDiff = new Date(latestWeight.date).getTime() - new Date(previousWeight.date).getTime();
+        const dayDiff = timeDiff / (1000 * 3600 * 24);
+        if (dayDiff <= 0) return null;
+        return weightDiff / dayDiff;
+    }
     
     function clearValidationErrors(prefix='f-') { document.querySelectorAll('.form-error').forEach(el => { if(el.id.startsWith(prefix)) el.style.display = 'none'; }); document.querySelectorAll('.form-group input, .form-group select').forEach(el => { if(el.id.startsWith(prefix)) el.classList.remove('invalid'); }); }
     function validateAnimalForm() { clearValidationErrors('f-'); let isValid = true; if (!$('#f-name').value.trim()) { $('#f-name').classList.add('invalid'); $('#f-name-error').innerText = 'Nome é obrigatório.'; $('#f-name-error').style.display = 'block'; isValid = false; } const birthDate = $('#f-birth').value; if (birthDate) { const today = new Date(); const selectedDate = new Date(birthDate); today.setHours(0,0,0,0); if(selectedDate > today) { $('#f-birth').classList.add('invalid'); $('#f-birth-error').innerText = 'Data não pode ser no futuro.'; $('#f-birth-error').style.display = 'block'; isValid = false; } } return isValid; }
@@ -250,15 +328,9 @@
     $('#btn-menu-dashboard').addEventListener('click', () => { showMainView('dashboard-view'); loadDashboardData(); });
     $('#btn-menu-rebanho').addEventListener('click', () => showMainView('rebanho-view'));
     $('#btn-menu-calendario').addEventListener('click', () => { showMainView('calendario-view'); loadEventsAPI(); });
-    
-    // btn-add (abrir modal) MODIFICADO
     $('#btn-add').addEventListener('click', () => { state.editingId = null; clearValidationErrors('f-'); $('#animal-modal-title').innerText = 'Cadastrar Animal'; $('#f-name').value = ''; $('#f-tag').value = ''; $('#f-breed').value = ''; $('#f-origin').value = ''; $('#f-sex').value = 'Macho'; $('#f-birth').value = ''; $('#f-cat').value = 'Recria'; $('#animal-modal').style.display = 'flex'; });
-    
     $('#animal-modal-cancel').addEventListener('click', () => { $('#animal-modal').style.display = 'none'; });
-    
-    // animal-modal-save (salvar animal) MODIFICADO
     $('#animal-modal-save').addEventListener('click', async () => { if (!validateAnimalForm()) return; const animalData = { name: $('#f-name').value.trim(), tag: $('#f-tag').value.trim(), breed: $('#f-breed').value.trim(), origin: $('#f-origin').value.trim(), sex: $('#f-sex').value, birth_date: $('#f-birth').value || null, category: $('#f-cat').value }; let success = false; if (state.editingId) success = await updateAnimalAPI(state.editingId, animalData); else success = await createAnimalAPI(animalData); if (success) { $('#animal-modal').style.display = 'none'; if (state.editingId) { const id = state.editingId; state.editingId = null; selectAnimal(id); } } });
-    
     $('#btn-add-event').addEventListener('click', () => { clearValidationErrors('e-'); const animalSelect = $('#e-animal-id'); animalSelect.innerHTML = '<option value="">Todo o rebanho</option>'; state.animals.forEach(a => { const option = document.createElement('option'); option.value = a.id; option.innerText = a.name; animalSelect.appendChild(option); }); $('#event-modal').style.display = 'flex'; });
     $('#event-modal-cancel').addEventListener('click', () => { $('#event-modal').style.display = 'none'; });
     $('#event-modal-save').addEventListener('click', async () => { if(!validateEventForm()) return; const eventData = { title: $('#e-title').value.trim(), description: $('#e-description').value.trim(), event_date: $('#e-date').value, type: $('#e-type').value, animal_id: $('#e-animal-id').value || null }; const success = await createEventAPI(eventData); if(success) $('#event-modal').style.display = 'none'; });
@@ -273,7 +345,6 @@
             state.user = JSON.parse(userJSON);
             showView('app-view');
             showMainView('dashboard-view');
-            // Carrega os dados em paralelo para uma inicialização mais rápida
             await Promise.all([loadDashboardData(), loadFromAPI()]);
         } else {
             showView('login-view');

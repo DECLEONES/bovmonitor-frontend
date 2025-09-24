@@ -181,27 +181,35 @@
   </div>
 
   <script>
-    const showLoader = () => $('#loader-overlay').style.display = 'flex';
-    const hideLoader = () => $('#loader-overlay').style.display = 'none';
+    // --- CONFIGURAÇÃO PRINCIPAL ---
+    const API_BASE_URL = 'https://bovmonitor-api.onrender.com'; // URL da sua API na Render
     const TOKEN_KEY = 'bovmonitor_token';
     const USER_KEY = 'bovmonitor_user';
+    
+    // --- ESTADO DA APLICAÇÃO ---
     let state = { animals: [], events: [], selectedId: null, editingId: null, user: null, token: null };
+
+    // --- FUNÇÕES UTILITÁRIAS ---
+    const showLoader = () => document.querySelector('#loader-overlay').style.display = 'flex';
+    const hideLoader = () => document.querySelector('#loader-overlay').style.display = 'none';
     const $ = (s) => document.querySelector(s);
     const fmtDate = (d, type='short') => { if (!d) return 'Data inv.'; const date = new Date(d); const userTimezoneOffset = date.getTimezoneOffset() * 60000; const adjustedDate = new Date(date.getTime() + userTimezoneOffset); if(type==='day') return adjustedDate.getDate(); if(type==='month') return adjustedDate.toLocaleString('default', { month: 'short' }); return adjustedDate.toLocaleDateString(); };
     function showToast(message, type = 'info') { const container = $('#notification-container'); const toast = document.createElement('div'); toast.className = `toast ${type}`; toast.innerText = message; container.appendChild(toast); setTimeout(() => toast.classList.add('show'), 10); setTimeout(() => { toast.classList.remove('show'); toast.addEventListener('transitionend', () => toast.remove()); }, 4000); }
     
+    // --- LÓGICA DE NAVEGAÇÃO ---
     function showMainView(viewId) {
         ['dashboard-view', 'rebanho-view', 'calendario-view'].forEach(id => $(`#${id}`).style.display = 'none');
         $(`#${viewId}`).style.display = 'block';
         ['dashboard', 'rebanho', 'calendario'].forEach(id => $(`#btn-menu-${id}`).classList.remove('active'));
         $(`#btn-menu-${viewId.split('-')[0]}`).classList.add('active');
     }
-
     function showView(viewId) { $('#login-view').style.display = 'none'; $('#app-view').style.display = 'none'; $(`#${viewId}`).style.display = 'block'; }
-    async function loginAPI(email, password) { showLoader(); try { const response = await fetch('http://localhost:3001/api/sessions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); if (!response.ok) { showToast('Email ou senha inválidos.', 'error'); return; } const data = await response.json(); localStorage.setItem(TOKEN_KEY, data.token); localStorage.setItem(USER_KEY, JSON.stringify(data.user)); initApp(); } catch (error) { showToast('Falha ao conectar.', 'error'); } finally { hideLoader(); } }
+
+    // --- FUNÇÕES DA API ---
+    async function loginAPI(email, password) { showLoader(); try { const response = await fetch(`${API_BASE_URL}/api/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) }); if (!response.ok) { showToast('Email ou senha inválidos.', 'error'); return; } const data = await response.json(); localStorage.setItem(TOKEN_KEY, data.token); localStorage.setItem(USER_KEY, JSON.stringify(data.user)); initApp(); } catch (error) { showToast('Falha ao conectar.', 'error'); } finally { hideLoader(); } }
     function logout() { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); state = { animals: [], events: [], selectedId: null, editingId: null, user: null, token: null }; showView('login-view'); }
-    async function apiFetch(url, options = {}) { const token = state.token; if (!token) throw new Error("Não autenticado"); const defaultOptions = { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }; const response = await fetch(`http://localhost:3001/api${url}`, { ...defaultOptions, ...options }); if (response.status === 401) { logout(); throw new Error("Sessão expirada."); } if (!response.ok && response.status !== 204) throw new Error(`Falha na API: ${response.statusText}`); return response.status === 204 ? null : response.json(); }
-    async function loadFromAPI() { showLoader(); try { state.animals = await apiFetch('/animals'); renderAll(); } catch (error) { console.error(error); showToast(error.message, 'error'); } finally { hideLoader(); } }
+    async function apiFetch(url, options = {}) { const token = state.token; if (!token) throw new Error("Não autenticado"); const defaultOptions = { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }; const response = await fetch(`${API_BASE_URL}/api${url}`, { ...defaultOptions, ...options }); if (response.status === 401) { logout(); throw new Error("Sessão expirada."); } if (!response.ok && response.status !== 204) throw new Error(`Falha na API: ${response.statusText}`); return response.status === 204 ? null : response.json(); }
+    async function loadFromAPI() { try { state.animals = await apiFetch('/animals'); renderAll(); } catch (error) { console.error(error); showToast(error.message, 'error'); } }
     async function createAnimalAPI(animalData) { showLoader(); try { await apiFetch('/animals', { method: 'POST', body: JSON.stringify(animalData) }); await loadFromAPI(); showToast('Animal cadastrado!', 'success'); return true; } catch (error) { showToast('Falha ao cadastrar.', 'error'); return false; } finally { hideLoader(); } }
     async function updateAnimalAPI(id, animalData) { showLoader(); try { await apiFetch(`/animals/${id}`, { method: 'PUT', body: JSON.stringify(animalData) }); await loadFromAPI(); showToast('Animal atualizado!', 'success'); return true; } catch (error) { showToast('Falha ao atualizar.', 'error'); return false; } finally { hideLoader(); } }
     async function deleteAnimalAPI(id) { showLoader(); try { await apiFetch(`/animals/${id}`, { method: 'DELETE' }); state.selectedId = null; await loadFromAPI(); showToast('Animal excluído.', 'info'); return true; } catch (error) { showToast('Falha ao excluir.', 'error'); return false; } finally { hideLoader(); } }
@@ -211,6 +219,7 @@
     async function loadEventsAPI() { showLoader(); try { state.events = await apiFetch('/events'); renderEventList(); } catch (error) { showToast('Falha ao carregar eventos.', 'error'); } finally { hideLoader(); } }
     async function createEventAPI(eventData) { showLoader(); try { await apiFetch('/events', { method: 'POST', body: JSON.stringify(eventData) }); await loadEventsAPI(); showToast('Evento registrado!', 'success'); return true; } catch (error) { showToast('Falha ao registrar evento.', 'error'); return false; } finally { hideLoader(); } }
     
+    // --- FUNÇÕES DE RENDERIZAÇÃO E EVENTOS ---
     function renderList(filter = '') { const area = $('#list-area'); area.innerHTML = ''; const list = state.animals.filter(a => (a.name + ' ' + (a.tag || '') + ' ' + a.id).toLowerCase().includes(filter.toLowerCase())); list.forEach(a => { const el = document.createElement('div'); el.className = 'animal'; el.dataset.id = a.id; el.innerHTML = `<div class="avatar">${a.name.slice(0, 2).toUpperCase()}</div><div class="meta"><h4>${a.name} <span style="color:var(--muted);font-size:12px">• ${a.category}</span></h4><p class="small">${a.tag || ''} — Nasc: ${fmtDate(a.birth_date)}</p></div><div style="text-align:right"><div class="pill">-- kg</div><div class="small">-- eventos</div></div>`; el.addEventListener('click', () => selectAnimal(a.id)); area.appendChild(el); }); }
     function selectAnimal(id) { const a = state.animals.find(x => x.id === id); if (!a) return; state.selectedId = id; $('#detail-name').innerText = a.name + ' — ' + a.tag; $('#detail-meta').innerText = `Nasc: ${fmtDate(a.birth_date)} • ${a.sex} • ${a.category}`; const btnEdit = $('#btn-edit'), btnDelete = $('#btn-delete'); btnEdit.style.display = 'inline-block'; btnDelete.style.display = 'inline-block'; const newBtnEdit = btnEdit.cloneNode(true); btnEdit.parentNode.replaceChild(newBtnEdit, btnEdit); setupEditButton(newBtnEdit, a); const newBtnDelete = btnDelete.cloneNode(true); btnDelete.parentNode.replaceChild(newBtnDelete, btnDelete); newBtnDelete.addEventListener('click', () => { if (confirm(`Tem certeza que deseja excluir "${a.name}"?`)) deleteAnimalAPI(a.id); }); $('#timeline').innerHTML = '<p class="small">Carregando histórico...</p>'; renderChart([]); fetchWeightsForAnimal(a.id); }
     let weightChartInstance = null; function renderChart(weights = []) { const canvas = document.getElementById('weightChart'); const ctx = canvas.getContext('2d'); if(weightChartInstance) weightChartInstance.destroy(); if (weights.length === 0) { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.fillStyle = '#9fb4c9'; ctx.font = '14px Inter'; ctx.fillText('Sem dados para exibir o gráfico.', 12, 24); return; } const labels = weights.map(w => fmtDate(w.date)).reverse(); const dataPoints = weights.map(w => w.weight).reverse(); weightChartInstance = new Chart(ctx, { type: 'line', data: { labels: labels, datasets: [{ label: 'Peso (kg)', data: dataPoints, borderColor: 'var(--accent)', backgroundColor: 'rgba(87, 217, 163, 0.2)', borderWidth: 2, fill: true, tension: 0.2 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: false }, }, plugins: { legend: { display: false } } } }); }
@@ -223,23 +232,22 @@
     function validateAnimalForm() { clearValidationErrors('f-'); let isValid = true; if (!$('#f-name').value.trim()) { $('#f-name').classList.add('invalid'); $('#f-name-error').innerText = 'Nome é obrigatório.'; $('#f-name-error').style.display = 'block'; isValid = false; } const birthDate = $('#f-birth').value; if (birthDate) { const today = new Date(); const selectedDate = new Date(birthDate); today.setHours(0,0,0,0); if(selectedDate > today) { $('#f-birth').classList.add('invalid'); $('#f-birth-error').innerText = 'Data não pode ser no futuro.'; $('#f-birth-error').style.display = 'block'; isValid = false; } } return isValid; }
     function validateEventForm() { clearValidationErrors('e-'); let isValid = true; if (!$('#e-title').value.trim()) { $('#e-title').classList.add('invalid'); $('#e-title-error').innerText = 'Título é obrigatório.'; $('#e-title-error').style.display = 'block'; isValid = false; } if (!$('#e-date').value) { $('#e-date').classList.add('invalid'); $('#e-date-error').innerText = 'Data é obrigatória.'; $('#e-date-error').style.display = 'block'; isValid = false; } return isValid; }
     
+    // --- EVENT LISTENERS FINAIS ---
     $('#btn-login').addEventListener('click', () => { loginAPI($('#login-email').value, $('#login-password').value); });
     $('#btn-logout').addEventListener('click', logout);
     $('#btn-menu-dashboard').addEventListener('click', () => { showMainView('dashboard-view'); loadDashboardData(); });
     $('#btn-menu-rebanho').addEventListener('click', () => showMainView('rebanho-view'));
     $('#btn-menu-calendario').addEventListener('click', () => { showMainView('calendario-view'); loadEventsAPI(); });
-    
     $('#btn-add').addEventListener('click', () => { state.editingId = null; clearValidationErrors('f-'); $('#animal-modal-title').innerText = 'Cadastrar Animal'; $('#f-name').value = ''; $('#f-sex').value = 'Macho'; $('#f-birth').value = ''; $('#f-cat').value = 'Recria'; $('#f-tag').value = ''; $('#animal-modal').style.display = 'flex'; });
     $('#animal-modal-cancel').addEventListener('click', () => { $('#animal-modal').style.display = 'none'; });
     $('#animal-modal-save').addEventListener('click', async () => { if (!validateAnimalForm()) return; const animalData = { name: $('#f-name').value.trim(), sex: $('#f-sex').value, birth_date: $('#f-birth').value || null, category: $('#f-cat').value, tag: $('#f-tag').value.trim() }; let success = false; if (state.editingId) success = await updateAnimalAPI(state.editingId, animalData); else success = await createAnimalAPI(animalData); if (success) { $('#animal-modal').style.display = 'none'; if (state.editingId) { const id = state.editingId; state.editingId = null; selectAnimal(id); } } });
-    
     $('#btn-add-event').addEventListener('click', () => { clearValidationErrors('e-'); const animalSelect = $('#e-animal-id'); animalSelect.innerHTML = '<option value="">Todo o rebanho</option>'; state.animals.forEach(a => { const option = document.createElement('option'); option.value = a.id; option.innerText = a.name; animalSelect.appendChild(option); }); $('#event-modal').style.display = 'flex'; });
     $('#event-modal-cancel').addEventListener('click', () => { $('#event-modal').style.display = 'none'; });
     $('#event-modal-save').addEventListener('click', async () => { if(!validateEventForm()) return; const eventData = { title: $('#e-title').value.trim(), description: $('#e-description').value.trim(), event_date: $('#e-date').value, type: $('#e-type').value, animal_id: $('#e-animal-id').value || null }; const success = await createEventAPI(eventData); if(success) $('#event-modal').style.display = 'none'; });
-    
     $('#search').addEventListener('input', (e) => renderList(e.target.value));
     $('#btn-add-weight').addEventListener('click', async () => { if (!state.selectedId) return showToast('Selecione um animal.', 'info'); const weightInput = $('#weight-input'); const weight = parseFloat(weightInput.value); if (!weight || weight <= 0) return showToast('Insira um peso válido.', 'error'); const weightData = { weight: weight, date: new Date().toISOString().split('T')[0] }; const success = await addWeightAPI(state.selectedId, weightData); if(success) weightInput.value = ''; });
 
+    // --- INICIALIZAÇÃO DA APLICAÇÃO ---
     async function initApp() {
         state.token = localStorage.getItem(TOKEN_KEY);
         const userJSON = localStorage.getItem(USER_KEY);
@@ -247,14 +255,14 @@
             state.user = JSON.parse(userJSON);
             showView('app-view');
             showMainView('dashboard-view');
-            await loadDashboardData();
-            await loadFromAPI();
+            // Carrega os dados em paralelo para uma inicialização mais rápida
+            await Promise.all([loadDashboardData(), loadFromAPI()]);
         } else {
             showView('login-view');
         }
     }
     
     initApp();
-  </script>
+</script>
 </body>
 </html>

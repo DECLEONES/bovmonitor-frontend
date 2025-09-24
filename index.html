@@ -146,15 +146,19 @@
         </div>
       </main>
     </div>
+    
     <div class="modal-backdrop" id="animal-modal">
       <div class="modal">
         <h3 id="animal-modal-title">Cadastrar Animal</h3><div style="height:10px"></div>
         <div class="form-grid">
           <div class="form-group"><label>Nome / Identificação</label><input id="f-name" /><p class="form-error" id="f-name-error"></p></div>
+          <div class="form-group"><label>Tag / Brinco</label><input id="f-tag" /></div>
+          
+          <div class="form-group"><label>Raça</label><input id="f-breed" /></div>
+          <div class="form-group"><label>Origem</label><input id="f-origin" /></div>
           <div class="form-group"><label>Sexo</label><select id="f-sex"><option>Macho</option><option>Fêmea</option></select></div>
           <div class="form-group"><label>Data de Nascimento</label><input id="f-birth" type="date" /><p class="form-error" id="f-birth-error"></p></div>
-          <div class="form-group"><label>Categoria</label><select id="f-cat"><option>Recria</option><option>Engorda</option><option>Reprodução</option></select></div>
-          <div class="form-group"><label>Tag / Observação</label><input id="f-tag" /></div>
+          <div class="form-group" style="grid-column: 1 / -1;"><label>Categoria</label><select id="f-cat"><option>Recria</option><option>Engorda</option><option>Reprodução</option></select></div>
         </div><div style="height:12px"></div>
         <div style="display:flex;justify-content:flex-end;gap:8px">
           <button class="btn" id="animal-modal-cancel" style="background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted)">Cancelar</button>
@@ -210,8 +214,13 @@
     function logout() { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(USER_KEY); state = { animals: [], events: [], selectedId: null, editingId: null, user: null, token: null }; showView('login-view'); }
     async function apiFetch(url, options = {}) { const token = state.token; if (!token) throw new Error("Não autenticado"); const defaultOptions = { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } }; const response = await fetch(`${API_BASE_URL}/api${url}`, { ...defaultOptions, ...options }); if (response.status === 401) { logout(); throw new Error("Sessão expirada."); } if (!response.ok && response.status !== 204) throw new Error(`Falha na API: ${response.statusText}`); return response.status === 204 ? null : response.json(); }
     async function loadFromAPI() { try { state.animals = await apiFetch('/animals'); renderAll(); } catch (error) { console.error(error); showToast(error.message, 'error'); } }
+    
+    // createAnimalAPI MODIFICADA
     async function createAnimalAPI(animalData) { showLoader(); try { await apiFetch('/animals', { method: 'POST', body: JSON.stringify(animalData) }); await loadFromAPI(); showToast('Animal cadastrado!', 'success'); return true; } catch (error) { showToast('Falha ao cadastrar.', 'error'); return false; } finally { hideLoader(); } }
+    
+    // updateAnimalAPI MODIFICADA
     async function updateAnimalAPI(id, animalData) { showLoader(); try { await apiFetch(`/animals/${id}`, { method: 'PUT', body: JSON.stringify(animalData) }); await loadFromAPI(); showToast('Animal atualizado!', 'success'); return true; } catch (error) { showToast('Falha ao atualizar.', 'error'); return false; } finally { hideLoader(); } }
+    
     async function deleteAnimalAPI(id) { showLoader(); try { await apiFetch(`/animals/${id}`, { method: 'DELETE' }); state.selectedId = null; await loadFromAPI(); showToast('Animal excluído.', 'info'); return true; } catch (error) { showToast('Falha ao excluir.', 'error'); return false; } finally { hideLoader(); } }
     async function fetchWeightsForAnimal(animalId) { try { const weights = await apiFetch(`/animals/${animalId}/weights`); renderTimeline(weights); renderChart(weights); } catch (error) { console.error(error); $('#timeline').innerHTML = '<p>Não foi possível carregar o histórico.</p>'; } }
     async function addWeightAPI(animalId, weightData) { showLoader(); try { await apiFetch(`/animals/${animalId}/weights`, { method: 'POST', body: JSON.stringify(weightData) }); await fetchWeightsForAnimal(animalId); showToast('Peso registrado!', 'success'); return true; } catch (error) { showToast('Falha ao registrar peso.', 'error'); return false; } finally { hideLoader(); } }
@@ -227,7 +236,10 @@
     function renderAll() { renderList($('#search').value || ''); if (state.selectedId) { const stillExists = state.animals.find(a => a.id === state.selectedId); if (stillExists) selectAnimal(stillExists.id); else { $('#detail-name').innerText = 'Selecione um animal'; $('#detail-meta').innerText = 'Ficha individual'; $('#btn-edit').style.display = 'none'; $('#btn-delete').style.display = 'none'; } } }
     function renderTimeline(weights = []) { const area = $('#timeline'); area.innerHTML = ''; if (weights.length === 0) { area.innerHTML = '<p class="small">Nenhum registro de peso.</p>'; return; } weights.forEach(w => { const el = document.createElement('div'); el.className = 'event'; el.innerHTML = `<strong>${w.weight} kg</strong> - <span class="small">${fmtDate(w.date)}</span>`; area.appendChild(el); }); }
     function renderEventList() { const area = $('#event-list-area'); area.innerHTML = ''; if(state.events.length === 0) { area.innerHTML = '<p class="small">Nenhum evento agendado.</p>'; return; } state.events.forEach(e => { const el = document.createElement('div'); el.className = 'event-card'; el.innerHTML = `<div class="event-date"><span class="event-day">${fmtDate(e.event_date, 'day')}</span><span class="event-month">${fmtDate(e.event_date, 'month')}</span></div><div><h4>${e.title}</h4><p class="small">${e.description || ''}</p><p class="small"><b>Animal:</b> ${e.animal_name || 'Todo o rebanho'} • <b>Tipo:</b> ${e.type}</p></div>`; area.appendChild(el); }); }
-    function setupEditButton(button, animal) { button.addEventListener('click', () => { state.editingId = animal.id; $('#animal-modal-title').innerText = 'Editar Animal'; $('#f-name').value = animal.name; $('#f-sex').value = animal.sex; $('#f-birth').value = animal.birth_date ? new Date(animal.birth_date).toISOString().split('T')[0] : ''; $('#f-cat').value = animal.category; $('#f-tag').value = animal.tag; $('#animal-modal').style.display = 'flex'; }); }
+    
+    // setupEditButton MODIFICADO
+    function setupEditButton(button, animal) { button.addEventListener('click', () => { state.editingId = animal.id; $('#animal-modal-title').innerText = 'Editar Animal'; $('#f-name').value = animal.name; $('#f-tag').value = animal.tag || ''; $('#f-breed').value = animal.breed || ''; $('#f-origin').value = animal.origin || ''; $('#f-sex').value = animal.sex; $('#f-birth').value = animal.birth_date ? new Date(animal.birth_date).toISOString().split('T')[0] : ''; $('#f-cat').value = animal.category; $('#animal-modal').style.display = 'flex'; }); }
+    
     function clearValidationErrors(prefix='f-') { document.querySelectorAll('.form-error').forEach(el => { if(el.id.startsWith(prefix)) el.style.display = 'none'; }); document.querySelectorAll('.form-group input, .form-group select').forEach(el => { if(el.id.startsWith(prefix)) el.classList.remove('invalid'); }); }
     function validateAnimalForm() { clearValidationErrors('f-'); let isValid = true; if (!$('#f-name').value.trim()) { $('#f-name').classList.add('invalid'); $('#f-name-error').innerText = 'Nome é obrigatório.'; $('#f-name-error').style.display = 'block'; isValid = false; } const birthDate = $('#f-birth').value; if (birthDate) { const today = new Date(); const selectedDate = new Date(birthDate); today.setHours(0,0,0,0); if(selectedDate > today) { $('#f-birth').classList.add('invalid'); $('#f-birth-error').innerText = 'Data não pode ser no futuro.'; $('#f-birth-error').style.display = 'block'; isValid = false; } } return isValid; }
     function validateEventForm() { clearValidationErrors('e-'); let isValid = true; if (!$('#e-title').value.trim()) { $('#e-title').classList.add('invalid'); $('#e-title-error').innerText = 'Título é obrigatório.'; $('#e-title-error').style.display = 'block'; isValid = false; } if (!$('#e-date').value) { $('#e-date').classList.add('invalid'); $('#e-date-error').innerText = 'Data é obrigatória.'; $('#e-date-error').style.display = 'block'; isValid = false; } return isValid; }
@@ -238,9 +250,15 @@
     $('#btn-menu-dashboard').addEventListener('click', () => { showMainView('dashboard-view'); loadDashboardData(); });
     $('#btn-menu-rebanho').addEventListener('click', () => showMainView('rebanho-view'));
     $('#btn-menu-calendario').addEventListener('click', () => { showMainView('calendario-view'); loadEventsAPI(); });
-    $('#btn-add').addEventListener('click', () => { state.editingId = null; clearValidationErrors('f-'); $('#animal-modal-title').innerText = 'Cadastrar Animal'; $('#f-name').value = ''; $('#f-sex').value = 'Macho'; $('#f-birth').value = ''; $('#f-cat').value = 'Recria'; $('#f-tag').value = ''; $('#animal-modal').style.display = 'flex'; });
+    
+    // btn-add (abrir modal) MODIFICADO
+    $('#btn-add').addEventListener('click', () => { state.editingId = null; clearValidationErrors('f-'); $('#animal-modal-title').innerText = 'Cadastrar Animal'; $('#f-name').value = ''; $('#f-tag').value = ''; $('#f-breed').value = ''; $('#f-origin').value = ''; $('#f-sex').value = 'Macho'; $('#f-birth').value = ''; $('#f-cat').value = 'Recria'; $('#animal-modal').style.display = 'flex'; });
+    
     $('#animal-modal-cancel').addEventListener('click', () => { $('#animal-modal').style.display = 'none'; });
-    $('#animal-modal-save').addEventListener('click', async () => { if (!validateAnimalForm()) return; const animalData = { name: $('#f-name').value.trim(), sex: $('#f-sex').value, birth_date: $('#f-birth').value || null, category: $('#f-cat').value, tag: $('#f-tag').value.trim() }; let success = false; if (state.editingId) success = await updateAnimalAPI(state.editingId, animalData); else success = await createAnimalAPI(animalData); if (success) { $('#animal-modal').style.display = 'none'; if (state.editingId) { const id = state.editingId; state.editingId = null; selectAnimal(id); } } });
+    
+    // animal-modal-save (salvar animal) MODIFICADO
+    $('#animal-modal-save').addEventListener('click', async () => { if (!validateAnimalForm()) return; const animalData = { name: $('#f-name').value.trim(), tag: $('#f-tag').value.trim(), breed: $('#f-breed').value.trim(), origin: $('#f-origin').value.trim(), sex: $('#f-sex').value, birth_date: $('#f-birth').value || null, category: $('#f-cat').value }; let success = false; if (state.editingId) success = await updateAnimalAPI(state.editingId, animalData); else success = await createAnimalAPI(animalData); if (success) { $('#animal-modal').style.display = 'none'; if (state.editingId) { const id = state.editingId; state.editingId = null; selectAnimal(id); } } });
+    
     $('#btn-add-event').addEventListener('click', () => { clearValidationErrors('e-'); const animalSelect = $('#e-animal-id'); animalSelect.innerHTML = '<option value="">Todo o rebanho</option>'; state.animals.forEach(a => { const option = document.createElement('option'); option.value = a.id; option.innerText = a.name; animalSelect.appendChild(option); }); $('#event-modal').style.display = 'flex'; });
     $('#event-modal-cancel').addEventListener('click', () => { $('#event-modal').style.display = 'none'; });
     $('#event-modal-save').addEventListener('click', async () => { if(!validateEventForm()) return; const eventData = { title: $('#e-title').value.trim(), description: $('#e-description').value.trim(), event_date: $('#e-date').value, type: $('#e-type').value, animal_id: $('#e-animal-id').value || null }; const success = await createEventAPI(eventData); if(success) $('#event-modal').style.display = 'none'; });
